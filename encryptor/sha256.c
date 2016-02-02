@@ -28,7 +28,7 @@ void sha256_encryption(unsigned char *text, unsigned char *encryption)
 
   memcpy(encryption, hash, sizeof(hash));
 
-  sha256_print(hash);
+  // sha256_print(hash);
 }
 
 void sha256_decryption(SHA256_DECRYPTION_BLK *blk, unsigned char* hash) {
@@ -47,17 +47,15 @@ void sha256_decryption(SHA256_DECRYPTION_BLK *blk, unsigned char* hash) {
 
   // This is the main block which encrypts the password
   // and compare it with the one given.
-  while (((read = getline(&line, &len, fp)) != -1) || (found)) {
-    // fprintf(stderr, "The password length is: %d\n", read);
+  while ((!found) && ((read = getline(&line, &len, fp)) != -1)) {
 
-    // TODO: Remove "\n" from the end of the line.
-    memcpy(encrypted_line, line, sizeof(line));
+    // memcpy(encrypted_line, line, sizeof(line));
+    line[strlen(line) - 1] = '\0';
     sha256_encryption(line, encrypted_line);
 
-    printf("%s", line);
     if (sha256_comparisson(hash, encrypted_line) == 0) { // They are the same;
       blk->length = read;
-      memcpy(blk->psw, line, sizeof(line));
+      memcpy(blk->psw, line, strlen(line));
       found = 1;
     }
 

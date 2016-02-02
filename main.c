@@ -56,7 +56,7 @@ int main(int argc, char* argv[]) {
 
   sha256_decryption(&blk, encryption);
 
-  //fprintf(stderr, "The password is: %s\n", blk.psw);
+  fprintf(stderr, "The password is: %s\n", blk.psw);
 
   return 0;
 }
