@@ -39,7 +39,7 @@ void sha256_decryption(SHA256_DECRYPTION_BLK *blk, unsigned char* hash) {
   int found = 0;
   unsigned char encrypted_line[32];
 
-  fp = fopen("files/test_passwords.txt", "r");
+  fp = fopen("files/known_passwords.txt", "r");
   if (fp == NULL) {
     fprintf(stderr, "File not found or opened.\n");
     exit(EXIT_FAILURE);
