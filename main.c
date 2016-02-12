@@ -72,6 +72,7 @@ int main(int argc, char* argv[]) {
   };
 
   char psw_encrypted[10][32];
+  char psw_found[10][32];
   unsigned char encryption[32];
 
   MPI_Init(&argc,&argv);
@@ -80,6 +81,10 @@ int main(int argc, char* argv[]) {
   gethostname(hostname,255);
 
   char word[32];
+  int slaveResponse;
+  MPI_Status status;
+  bool finished;
+  bool slavesFinished[world_size];
 
   if (rank == 0) {
     //encrypt passwords
@@ -90,21 +95,48 @@ int main(int argc, char* argv[]) {
     //send passwords to slaves
     for (int i = 0; i < (sizeof(psw_encrypted)/ sizeof (char[32])); i++ ) {
       for (int j = 1; j < world_size; j++ ) {
-        MPI_Send(&psw_encrypted[i], sizeof (char[32]), MPI_CHAR, j , 0, MPI_COMM_WORLD);
+        MPI_Send(&psw_encrypted[i], sizeof (char[32]), MPI_CHAR, j , 0, MPI_COMM_WORLD);//Tag 0 = first messages to slaves
       }
     }
-    /*while !notermino{
-    //send tag -1 si termino
-    //send tag posicion encontrada si encontre
-    //llevar array de todos los que ya terminaron para salir del while
-
-    }*/
+    //initialize all slaves as false
+    for(int i = 0; i < (world_size - 1); i++){
+      slavesFinished[i] = false;
+    }
+    //initialize all received passwords as ""
+    for(int i = 0; i < (world_size - 1); i++){
+      psw_found[i] = "";
+    }
+    /* while not all slaves finished */
+    while( !finished ) {
+      MPI_Recv(&slaveResponse, 1, MPI_INT, MPI_ANY_SOURCE, 1, MPI_COMM_WORLD, &status);//Tag 1 = slave sends a int
+      if (slaveResponse  == -1){
+        slavesFinished[(status.MPI_SOURCE - 1)] = true;
+        finished = true;
+        //iterate slavesFinished to know if all are finished
+        for(int i = 0; i < (world_size - 1); i++){
+          finished = finished && slavesFinished[i];
+        }
+      }else { //slave found a password
+        MPI_Recv(&word, sizeof (char[32]), MPI_CHAR, status.MPI_SOURCE, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);//Tag 2 = slave sends a psw
+        memcpy(word, psw_found[slaveResponse], sizeof(word));   
+      }
+    }
   } else { //I'm a slave
     for (int h = 0; h < 10; h++ ) {
       //receive passwords to desencrypt
       MPI_Recv(&word, sizeof (char[32]), MPI_CHAR, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
       memcpy(psw_encrypted[h], word, sizeof(word));
     }
+    //Abrir parte del archivo correspondiente
+    //Tomar una palabra encriptarla y compararla con todo el arreglo
+      //Si no da coincidencia avanzar palabra y repetir
+      //Si da coincidencia tengo el indice y la palabra sin encriptar
+        char password_found[32];
+        int index;
+        MPI_Send(&index, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);//Tag 1 = first messages to slaves
+        MPI_Send(&password_found[i], sizeof (char[32]), MPI_CHAR, 0 , 2, MPI_COMM_WORLD);//Tag 2 = slave sends a psw
+    //Al terminar mandar termine
+        MPI_Send(-1, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);//Tag 1 = first messages to slaves
     //encryptar y comparar con todas las passwords las partes del archivo que correspondan
     //crear hilo para fuerza bruta
     //si encuentro mando con tag correspondiente
