@@ -38,6 +38,9 @@
 #include <unistd.h>
 #include "encryptor/sha256.h"
 
+const int NUMBER_OF_CHILDS = 2;
+pid_t pids[NUMBER_OF_CHILDS];
+
 int main(int argc, char* argv[]) {
   // if (argc == 1) {
   //   fprintf(stderr, "ERROR: No arguments were passed. \n\n");
@@ -128,25 +131,46 @@ int main(int argc, char* argv[]) {
       memcpy(psw_encrypted[h], word, sizeof(word));
     }
     //Abrir parte del archivo correspondiente
-    //Tomar una palabra encriptarla y compararla con todo el arreglo
-      //Si no da coincidencia avanzar palabra y repetir
-      //Si da coincidencia tengo el indice y la palabra sin encriptar
-        char password_found[32];
-        int index;
-        MPI_Send(&index, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);//Tag 1 = first messages to slaves
-        MPI_Send(&password_found[i], sizeof (char[32]), MPI_CHAR, 0 , 2, MPI_COMM_WORLD);//Tag 2 = slave sends a psw
-    //Al terminar mandar termine
-        MPI_Send(-1, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);//Tag 1 = first messages to slaves
-    //encryptar y comparar con todas las passwords las partes del archivo que correspondan
-    //crear hilo para fuerza bruta
-    //si encuentro mando con tag correspondiente
-    //si termino mando que termine
-      // printf("Process %d received word %s from process 0\n", rank, word);
-      // for(int i=0; i< TOTAL_PASSWORDS; i=i+1) {
-      //   memset(blk.psw, 0, sizeof(&blk.psw));
-      //   sha256_decryption(&blk, &psw_encrypted[i]);
-      //   fprintf(stderr, "The password is: %s\n", blk.psw);
-      // }
+    pid_t pid;
+    for (int i = 0; i < NUMBER_OF_CHILDS; i++) {
+        pid = fork();
+
+        if (pid == -1) { 
+          // error
+          fprintf(stderr, "ERROR: Fork operation could not complete succesfully\n");
+          exit(EXIT_FAILURE);
+        } else if(pid == 0){ 
+          // child
+          printf("child %d process number: %d on host %s\n", i , rank, hostname);
+          if i == 0 {
+            //first child make some logic
+          } else {
+            //usar palabras del diccionario sin alterar, child 1
+            //Tomar una palabra encriptarla y compararla con todo el arreglo
+            //Si no da coincidencia avanzar palabra y repetir
+            //Si da coincidencia tengo el indice y la palabra sin encriptar
+            char password_found[32];
+            int index;
+            MPI_Send(&index, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);//Tag 1 = first messages to slaves
+            MPI_Send(&password_found[i], sizeof (char[32]), MPI_CHAR, 0 , 2, MPI_COMM_WORLD);//Tag 2 = slave sends a psw
+            //Al terminar mandar termine
+            MPI_Send(-1, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);//Tag 1 = first messages to slaves
+          }
+          break;
+        } else { 
+          // parent
+          pids[i] = pid;
+        }
+    }
+
+    // Finish the execution if i'm child
+    if (pid == 0) { return 1; }
+
+    //Parent wait for all the childs to finish their execution.
+    for (int i = 0; i < NUMBER_OF_CHILDS; i++) {
+      waitpid(pids[i], NULL, 0);
+      // fprintf(stderr, "child %d finished process number: %d on host %s\n", pids[i], rank, hostname);
+    }
   }
   MPI_Finalize();
   return 0;
