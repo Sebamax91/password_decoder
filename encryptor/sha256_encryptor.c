@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include "sha256_encryptor.h"
 
 uint k[64] = {
