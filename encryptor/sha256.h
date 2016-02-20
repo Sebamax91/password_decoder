@@ -7,7 +7,7 @@
 
 typedef struct {
   int length;
-  char psw[];
+  char *psw;
 } SHA256_DECRYPTED_PASSWORD_BLK;
 
 typedef struct {

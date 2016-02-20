@@ -88,9 +88,9 @@ void sha256_decryption(SHA256_DECRYPTED_PASSWORDS_BLK *blk, unsigned char **hash
     // there are passwords to check yet.
     while(!in_hash && i != NUMBER_OF_PASSWORDS) {
       if (sha256_comparisson(encrypted_line, &hash[i*8]) == 0) { // They are the same;
-        fprintf(stderr, "Encontre: %s\n", line);
-        blk->passwords_blk[found].length = read;
-        memcpy(blk->passwords_blk[found].psw, line, sizeof(line));
+        blk->passwords_blk[found].length = read - 1; // Removal of '\n'
+        memcpy(blk->passwords_blk[found].psw, line, read);
+
         in_hash = 1;
         found++;
       }

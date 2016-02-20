@@ -3,6 +3,22 @@
 #include <string.h>
 #include "encryptor/sha256.h"
 
+void passwords_free(SHA256_DECRYPTED_PASSWORDS_BLK *blk) {
+  fprintf(stderr, "Passwords encontradas:\n" );
+
+  for(int idx = 0; idx < NUMBER_OF_PASSWORDS; idx++) {
+    fprintf(stderr, "%s - %d\n", blk->passwords_blk[idx].psw, blk->passwords_blk[idx].length);
+
+    free(blk->passwords_blk[idx].psw);
+  }
+}
+
+void passwords_malloc(SHA256_DECRYPTED_PASSWORDS_BLK *blk) {
+  for (int idx = 0; idx < NUMBER_OF_PASSWORDS; idx++) {
+    blk->passwords_blk[idx].psw = (char*)malloc(64);
+  }
+}
+
 void retrieve_encrypted_passwords(unsigned char ** psw) {
   // File variables
   FILE * fp;
@@ -28,16 +44,17 @@ void retrieve_encrypted_passwords(unsigned char ** psw) {
 
 int main(int argc, char* argv[]) {
   SHA256_DECRYPTED_PASSWORDS_BLK blk; // Result structure
+  unsigned char **psw = malloc(NUMBER_OF_PASSWORDS * 64); // Encryptor variables
 
-  unsigned char psw[NUMBER_OF_PASSWORDS][64]; // Encryptor variables
+  passwords_malloc(&blk);
+
   retrieve_encrypted_passwords(psw);
 
   sha256_decryption(&blk, psw, 1);
 
-  fprintf(stderr, "Passwords encontradas:\n" );
-  for(int idx = 0; idx < NUMBER_OF_PASSWORDS; idx++) {
-    fprintf(stderr, "%s\n", blk.passwords_blk[idx].psw);
-  }
+  passwords_free(&blk);
+
+  free(psw);
 
   return 0;
 }
