@@ -4,6 +4,7 @@
 #define NUMBER_OF_PASSWORDS 10
 #define NUMBER_OF_KNOWN_PASSWORDS 14344391
 #define NUMBER_OF_PROCESSES 1
+#define PASSWORD_ENCRYPTION_LENGTH 64
 
 typedef struct {
   int length;

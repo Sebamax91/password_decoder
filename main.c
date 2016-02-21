@@ -15,7 +15,7 @@ void passwords_free(SHA256_DECRYPTED_PASSWORDS_BLK *blk) {
 
 void passwords_malloc(SHA256_DECRYPTED_PASSWORDS_BLK *blk) {
   for (int idx = 0; idx < NUMBER_OF_PASSWORDS; idx++) {
-    blk->passwords_blk[idx].psw = (char*)malloc(64);
+    blk->passwords_blk[idx].psw = (char*)malloc(PASSWORD_ENCRYPTION_LENGTH);
   }
 }
 
@@ -35,7 +35,7 @@ void retrieve_encrypted_passwords(unsigned char ** psw) {
 
   while ((read = getline(&line, &len, fp)) != -1) {
     line[strlen(line) - 1] = '\0';
-    memcpy(&psw[i*8], line, 64);
+    memcpy(&psw[i*8], line, PASSWORD_ENCRYPTION_LENGTH);
     i++;
   }
 
@@ -44,7 +44,7 @@ void retrieve_encrypted_passwords(unsigned char ** psw) {
 
 int main(int argc, char* argv[]) {
   SHA256_DECRYPTED_PASSWORDS_BLK blk; // Result structure
-  unsigned char **psw = malloc(NUMBER_OF_PASSWORDS * 64); // Encryptor variables
+  unsigned char **psw = malloc(NUMBER_OF_PASSWORDS * PASSWORD_ENCRYPTION_LENGTH); // Encryptor variables
 
   passwords_malloc(&blk);
 

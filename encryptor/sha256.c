@@ -12,7 +12,7 @@ void sha256_string(unsigned char *sha256, unsigned char *sha256_char) {
 }
 
 int sha256_comparisson(unsigned char* sha256_1, unsigned char* sha256_2) {
-  unsigned char sha256_char[64];
+  unsigned char sha256_char[PASSWORD_ENCRYPTION_LENGTH];
   sha256_string(sha256_1, sha256_char);
   return memcmp(sha256_char, sha256_2, sizeof(sha256_char));
 }
@@ -33,7 +33,7 @@ void sha256_encryption(unsigned char *text, unsigned char *encryption)
   SHA256_CTX ctx;
 
   sha256_init(&ctx);
-  sha256_update(&ctx,text,strlen(text));
+  sha256_update(&ctx,text,strlen((const char *)text));
   sha256_final(&ctx,hash);
 
   memcpy(encryption, hash, sizeof(hash));
@@ -75,27 +75,30 @@ void sha256_decryption(SHA256_DECRYPTED_PASSWORDS_BLK *blk, unsigned char **hash
   // and compare it with the one given.
   int i;
   int in_hash;
-  while ((found != NUMBER_OF_PASSWORDS) && ((read = getline(&line, &len, fp)) != -1)) {
+  int read_lines = 0;
+  while ((found != NUMBER_OF_PASSWORDS) && ((read = getline(&line, &len, fp)) != -1) && (read_lines < lines_to_process)) {
     // Remove '\n' at the end of the line.
     line[strlen(line) - 1] = '\0';
 
     // Encrypt the given line in the sha256 format.
-    sha256_encryption(line, encrypted_line);
+    sha256_encryption((unsigned char *)line, encrypted_line);
 
     i = 0;
     in_hash = 0;
     // WHILE the passwords hasn't been found on the array of encryted passwords AND
     // there are passwords to check yet.
     while(!in_hash && i != NUMBER_OF_PASSWORDS) {
-      if (sha256_comparisson(encrypted_line, &hash[i*8]) == 0) { // They are the same;
-        blk->passwords_blk[found].length = read - 1; // Removal of '\n'
-        memcpy(blk->passwords_blk[found].psw, line, read);
+      if (sha256_comparisson(encrypted_line, (unsigned char *)&hash[i*8]) == 0) { // They are the same;
+        blk->passwords_blk[i].length = read - 1; // Removal of '\n'
+        memcpy(blk->passwords_blk[i].psw, line, read);
 
         in_hash = 1;
         found++;
       }
       i++;
     }
+
+    read_lines++;
   }
 
   fclose(fp);
