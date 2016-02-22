@@ -2,13 +2,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include "encryptor/sha256.h"
+#include "utils/time.h"
+
+void passwords_print(SHA256_DECRYPTED_PASSWORDS_BLK blk) {
+  for (int idx = 0; idx < NUMBER_OF_PASSWORDS; idx++) {
+    fprintf(stderr, "password_%d => '%s'\n", idx + 1, (blk.passwords_blk[idx].length > -1) ? blk.passwords_blk[idx].psw : "not found");
+  }
+}
 
 void passwords_free(SHA256_DECRYPTED_PASSWORDS_BLK *blk) {
-  fprintf(stderr, "Passwords encontradas:\n" );
-
   for(int idx = 0; idx < NUMBER_OF_PASSWORDS; idx++) {
-    fprintf(stderr, "%s - %d\n", blk->passwords_blk[idx].psw, blk->passwords_blk[idx].length);
-
     free(blk->passwords_blk[idx].psw);
   }
 }
@@ -48,9 +51,15 @@ int main(int argc, char* argv[]) {
 
   passwords_malloc(&blk);
 
+  print_time(0);
+
   retrieve_encrypted_passwords(psw);
 
   sha256_decryption(&blk, psw, 1);
+
+  print_time(0);
+
+  passwords_print(blk);
 
   passwords_free(&blk);
 
