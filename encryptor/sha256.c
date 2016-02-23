@@ -46,7 +46,6 @@ void sha256_decryption(SHA256_DECRYPTED_PASSWORDS_BLK *blk, unsigned char **hash
   char * line = NULL;
   size_t len = 0;
   ssize_t read;
-  int found = 0;
   unsigned char encrypted_line[32];
 
   fp = fopen("files/known_passwords.txt", "r");
@@ -76,7 +75,7 @@ void sha256_decryption(SHA256_DECRYPTED_PASSWORDS_BLK *blk, unsigned char **hash
   int i;
   int in_hash;
   int read_lines = 0;
-  while ((found != NUMBER_OF_PASSWORDS) && ((read = getline(&line, &len, fp)) != -1) && (read_lines < lines_to_process)) {
+  while ((blk->psw_found != NUMBER_OF_PASSWORDS) && ((read = getline(&line, &len, fp)) != -1) && (read_lines < lines_to_process)) {
     // Remove '\n' at the end of the line.
     line[strlen(line) - 1] = '\0';
 
@@ -93,7 +92,7 @@ void sha256_decryption(SHA256_DECRYPTED_PASSWORDS_BLK *blk, unsigned char **hash
         memcpy(blk->passwords_blk[i].psw, line, read);
 
         in_hash = 1;
-        found++;
+        blk->psw_found++;
       }
       i++;
     }
