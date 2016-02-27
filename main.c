@@ -1,11 +1,17 @@
 #include <mpi.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include "encryptor/sha256.h"
 #include "encryptor/sha256_extended.h"
 #include "utils/time.h"
+
+typedef struct {
+  int rank;
+  SHA256_DECRYPTED_PASSWORDS_BLK *blk;
+  unsigned char **psw;
+} DECRYPTION_BLK;
 
 void passwords_print(SHA256_DECRYPTED_PASSWORDS_BLK blk) {
   for (int idx = 0; idx < NUMBER_OF_PASSWORDS; idx++) {
@@ -50,6 +56,61 @@ void retrieve_encrypted_passwords(unsigned char ** psw) {
   fclose(fp);
 }
 
+void terminate_childs(int found) {
+  // The process 0 is the master, and it does not receive any message, it sends them
+  for (int i = 1; i < NUMBER_OF_PROCESSES; i++ ) {
+    // Send that all the passwords were found OR
+    // That not all the passwords were found and the decryption
+    //    threads have finished their execution already.
+
+    // MPI_Ssend block the thread until it is received on the other side.
+    MPI_Ssend(&found, 1, MPI_INT, i , 1, MPI_COMM_WORLD);
+  }
+}
+
+void *listening_MPI(void *arg) {
+  int value;
+  MPI_Recv(&value, 1, MPI_INT, MPI_ANY_SOURCE, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+  pthread_exit((void *)NULL);
+}
+
+void *sha256(void *arg) {
+  int finish = -1;
+  DECRYPTION_BLK *decryption_blk = arg;
+
+  sha256_decryption(decryption_blk->blk, decryption_blk->psw, decryption_blk->rank);
+
+  // I send to the master process that I've sent him all the passwords
+  // that I've found and that I'm finishing my execution now.
+  MPI_Send(&finish, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);
+  pthread_exit((void *)NULL);
+}
+
+void *sha256_extended_append(void *arg) {
+  int finish = -1;
+  DECRYPTION_BLK *decryption_blk = arg;
+
+  sha256_decryption_extended(decryption_blk->blk, decryption_blk->psw, decryption_blk->rank, SHA256_DECRYPT_APPEND);
+
+  // I send to the master process that I've sent him all the passwords
+  // that I've found and that I'm finishing my execution now.
+  MPI_Send(&finish, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);
+  pthread_exit((void *)NULL);
+}
+
+void *sha256_extended_preprend(void* arg) {
+  int finish = -1;
+  DECRYPTION_BLK *decryption_blk = arg;
+
+  sha256_decryption_extended(decryption_blk->blk, decryption_blk->psw, decryption_blk->rank, SHA256_DECRYPT_PREPEND);
+
+  // I send to the master process that I've sent him all the passwords
+  // that I've found and that I'm finishing my execution now.
+  MPI_Send(&finish, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);
+  pthread_exit((void *)NULL);
+}
+
 int main(int argc, char* argv[]) {
   // Check the number of slave processed configured to run.
   // If the number is below 2, the execution must finish, becuase:
@@ -65,10 +126,13 @@ int main(int argc, char* argv[]) {
   int rank;
   int world_size;
 
+  // Serial Parameters
+  SHA256_DECRYPTED_PASSWORDS_BLK blk; // Result structure
   char word[PASSWORD_ENCRYPTION_LENGTH];
 
   // Initialize MPI
-  MPI_Init(&argc,&argv);
+  int provided;
+  MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
@@ -78,15 +142,13 @@ int main(int argc, char* argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  // Serial Parameters
-  SHA256_DECRYPTED_PASSWORDS_BLK blk; // Result structure
-  unsigned char **psw = malloc(NUMBER_OF_PASSWORDS * PASSWORD_ENCRYPTION_LENGTH); // Encryptor variables
-
   // Reserve space in memory for all the passwords results.
   passwords_malloc(&blk);
 
   if (rank == 0) {
     print_time(0);
+
+    unsigned char **psw = malloc(NUMBER_OF_PASSWORDS * PASSWORD_ENCRYPTION_LENGTH); // Encryptor variables
 
     MPI_Status status;
     int slaves_finished[NUMBER_OF_PROCESSES - 1] = { 0 };
@@ -122,6 +184,12 @@ int main(int argc, char* argv[]) {
           // to terminate the execution of the program.
           finished = finished && slaves_finished[i];
         }
+
+        // In case all the threads_1 (the one which encrypts all that there is in the txt)
+        // finishes without finding all the passwords.
+        if (blk.psw_found == NUMBER_OF_PASSWORDS) {
+          terminate_childs(-1);
+        }
       } else { // Slave found a password
         // Receive the password length from the slave with ID = {status,MPI_SOURCE}
         MPI_Recv(&blk.passwords_blk[psw_idx].length, 1, MPI_INT, status.MPI_SOURCE, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -129,14 +197,14 @@ int main(int argc, char* argv[]) {
         MPI_Recv(&word, blk.passwords_blk[psw_idx].length, MPI_CHAR, status.MPI_SOURCE, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE); // TAG_2 = Slave sends a psw
         // Copy the result to the passwords structure
         memcpy(blk.passwords_blk[psw_idx].psw, word, blk.passwords_blk[psw_idx].length);
+        // Add 1 to the number of found passwords
+        blk.psw_found++;
 
-        // Send the password that was found to the slaves processes, so they can determine
-        // if the execution must end, or they must continue looking for other passwods.
-
-        fprintf(stderr, "%s\n", "dadfasd");
-        for (int i = 0; i < NUMBER_OF_PASSWORDS; i++ ) {
-          MPI_Send(&i, 1, MPI_INT, i , 0, MPI_COMM_WORLD);
-          fprintf(stderr, "sent %d\n", i);
+        // // Send the password that was found to the slaves processes, so they can determine
+        // // if the execution must end, or they must continue looking for other passwods.
+        if (blk.psw_found == NUMBER_OF_PASSWORDS) {
+          terminate_childs(NUMBER_OF_PASSWORDS);
+          finished = 1;
         }
       }
     }
@@ -144,104 +212,47 @@ int main(int argc, char* argv[]) {
     print_time(1);
     passwords_print(blk);
 
+    free(psw);
+
   } else { //I'm a slave
     int finish = -1;
+
+    DECRYPTION_BLK decryption_blk;
+    decryption_blk.blk = &blk;
+    decryption_blk.psw = malloc(NUMBER_OF_PASSWORDS * PASSWORD_ENCRYPTION_LENGTH);
+    decryption_blk.rank = rank;
+
     for (int idx = 0; idx < NUMBER_OF_PASSWORDS; idx++ ) {
       // Wait for passwords to decrypt.
       MPI_Recv(&word, PASSWORD_ENCRYPTION_LENGTH, MPI_CHAR, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-      memcpy(&psw[idx*8], word, PASSWORD_ENCRYPTION_LENGTH);
+      memcpy(&decryption_blk.psw[idx*8], word, PASSWORD_ENCRYPTION_LENGTH);
     }
 
-    for (int fork_idx = 0; fork_idx < 2; fork_idx++) {
-      pid_t pid = fork();
+    void *status;
+    pthread_attr_t attr;
+    pthread_t thread[4];
 
-      if (pid == -1) { // Error forking.
-        fprintf(stderr, "ERROR: Fork operation could not complete succesfully\n");
-        exit(EXIT_FAILURE);
-      } else if(pid == 0){ // I am a child thread.
-        if (fork_idx == 0) {
-          // This thread is going to wait for incomming passwords that
-          // other processes have decrypthed.
-          int psw_idx;
-          fprintf(stderr, "child process number: %d - %d\n" , rank, fork_idx);
-          // MPI_Recv(&psw_idx, 1, MPI_INT, MPI_ANY_SOURCE, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE); // TAG_1 = First messages to slaves
-          // fprintf(stderr, "%d - %d\n", rank, psw_idx);
-          pid_t pid_2 = fork();
-          if (pid_2 == -1) { // Error forking.
-            fprintf(stderr, "ERROR: Fork operation could not complete succesfully\n");
-            exit(EXIT_FAILURE);
-          } else if( pid_2 == 0 ){
-            fprintf(stderr, "child process of child number: %d\n" , rank);
-            MPI_Recv(&psw_idx, 1, MPI_INT, MPI_ANY_SOURCE, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE); // TAG_1 = First messages to slaves
-            fprintf(stderr, "%d - %d\n", rank, psw_idx);
-            return 1;
-          } else {
-            //waitpid(pid_2, NULL, 0);
-            // return 1;
-          }
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+    pthread_create(&thread[0], &attr, listening_MPI, (void *)0);
+    pthread_create(&thread[1], &attr, sha256, (void *)&decryption_blk);
+    pthread_create(&thread[2], &attr, sha256_extended_append, (void *)&decryption_blk);
+    pthread_create(&thread[3], &attr, sha256_extended_preprend, (void *)&decryption_blk);
 
-        } else {
-          fprintf(stderr, "child process number: %d - %d\n" , rank, fork_idx);
-          // Decrypt all the passwords possible with this process!!
-          sha256_decryption(&blk, psw, rank);
-          passwords_print(blk);
-          sha256_decryption_extended(&blk, psw, rank, SHA256_DECRYPT_APPEND);
-          passwords_print(blk);
-          sha256_decryption_extended(&blk, psw, rank, SHA256_DECRYPT_PREPEND);
-          passwords_print(blk);
+    pthread_attr_destroy(&attr);
 
-          // Send all the passwords that I've found to the master.
-          for (int idx = 0; idx < NUMBER_OF_PASSWORDS; idx++) {
-            if (blk.passwords_blk[idx].length != -1) { // A password was found in that position.
-              // Send which slave process I am.
-              MPI_Send(&idx, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);
-              // Send the length of the password I have found.
-              MPI_Send(&blk.passwords_blk[idx].length, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);
-              // Send the password.
-              MPI_Send(blk.passwords_blk[idx].psw, blk.passwords_blk[idx].length, MPI_CHAR, 0 , 2, MPI_COMM_WORLD);
-            }
-          }
+    // Wait for the response of the main process on wheater all the passwords
+    // were found, or the search has finished.
+    pthread_join(thread[0], &status);
 
-          // I send to the master process that I've sent him all the passwords
-          // that I've found and that I'm finishing my execution now.
-          MPI_Send(&finish, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);
-        }
-
-      } else {
-        // parent
-        pids[fork_idx] = pid;
-        waitpid(pids[fork_idx], NULL, 0);
-        fprintf(stderr, "%s\n", "Ended!");
-      }
-    }
-
-    // Decrypt all the passwords possible with this process!!
-    // sha256_decryption(&blk, psw, rank);
-    // passwords_print(blk);
-    // sha256_decryption_extended(&blk, psw, rank, SHA256_DECRYPT_APPEND);
-    // passwords_print(blk);
-    // sha256_decryption_extended(&blk, psw, rank, SHA256_DECRYPT_PREPEND);
-    // passwords_print(blk);
-
-    // Send all the passwords that I've found to the master.
-    // for (int idx = 0; idx < NUMBER_OF_PASSWORDS; idx++) {
-    //   if (blk.passwords_blk[idx].length != -1) { // A password was found in that position.
-    //     // Send which slave process I am.
-    //     MPI_Send(&idx, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);
-    //     // Send the length of the password I have found.
-    //     MPI_Send(&blk.passwords_blk[idx].length, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);
-    //     // Send the password.
-    //     MPI_Send(blk.passwords_blk[idx].psw, blk.passwords_blk[idx].length, MPI_CHAR, 0 , 2, MPI_COMM_WORLD);
-    //   }
-    // }
-
-    // I send to the master process that I've sent him all the passwords
-    // that I've found and that I'm finishing my execution now.
-    // MPI_Send(&finish, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);
+    // Finish all the other threads (they must have finished already).
+    pthread_cancel(thread[1]);
+    pthread_cancel(thread[2]);
+    pthread_cancel(thread[3]);
   }
 
   passwords_free(&blk);
-  free(psw);
 
   MPI_Finalize();
   return 0;

@@ -1,3 +1,4 @@
+#include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,6 +35,13 @@ void password_append_digits(SHA256_DECRYPTED_PASSWORDS_BLK *blk,
 
           in_hash = 1;
           blk->psw_found++;
+
+          // Send which slave process I am.
+          MPI_Send(&i, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);
+          // Send the length of the password I have found.
+          MPI_Send(&blk->passwords_blk[i].length, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);
+          // Send the password.
+          MPI_Send(blk->passwords_blk[i].psw, blk->passwords_blk[i].length, MPI_CHAR, 0 , 2, MPI_COMM_WORLD);
         }
         i++;
       }
@@ -81,6 +89,13 @@ void password_prepend_digits(SHA256_DECRYPTED_PASSWORDS_BLK *blk,
 
           in_hash = 1;
           blk->psw_found++;
+
+          // Send which slave process I am.
+          MPI_Send(&i, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);
+          // Send the length of the password I have found.
+          MPI_Send(&blk->passwords_blk[i].length, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);
+          // Send the password.
+          MPI_Send(blk->passwords_blk[i].psw, blk->passwords_blk[i].length, MPI_CHAR, 0 , 2, MPI_COMM_WORLD);
         }
         i++;
       }

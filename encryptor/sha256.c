@@ -1,3 +1,4 @@
+#include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -75,6 +76,8 @@ void sha256_decryption(SHA256_DECRYPTED_PASSWORDS_BLK *blk, unsigned char **hash
   int i;
   int in_hash;
   int read_lines = 0;
+  int psw_found;
+
   while ((blk->psw_found != NUMBER_OF_PASSWORDS) && ((read = getline(&line, &len, fp)) != -1) && (read_lines < lines_to_process)) {
     // Remove '\n' at the end of the line.
     line[strlen(line) - 1] = '\0';
@@ -93,6 +96,13 @@ void sha256_decryption(SHA256_DECRYPTED_PASSWORDS_BLK *blk, unsigned char **hash
 
         in_hash = 1;
         blk->psw_found++;
+
+        // Send which slave process I am.
+        MPI_Send(&i, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);
+        // Send the length of the password I have found.
+        MPI_Send(&blk->passwords_blk[i].length, 1, MPI_INT, 0 , 1, MPI_COMM_WORLD);
+        // Send the password.
+        MPI_Send(blk->passwords_blk[i].psw, blk->passwords_blk[i].length, MPI_CHAR, 0 , 2, MPI_COMM_WORLD);
       }
       i++;
     }
